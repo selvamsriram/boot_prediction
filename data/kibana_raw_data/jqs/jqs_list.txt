@@ -1,0 +1,5 @@
+# Filters output from Kibana Curl command - Level 1 Parsing
+# Prints only the messages from the kibana output
+
+jq '.hits.hits ' output.json | jq ".[] | ._source.message"
+

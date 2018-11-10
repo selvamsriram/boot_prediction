@@ -1,0 +1,2 @@
+curl --header "content-type: application/JSON" -XPOST 'localhost:9200/_all/_search' -d @sampleq.json
+
