@@ -11,6 +11,8 @@ start_msg = "PXEKERNEL/PXEWAIT => PXEKERNEL/PXEWAKEUP"
 end_msg   = "NORMALv2/TBSETUP => NORMALv2/ISUP" 
 timegap   = 600 # In Seconds
 base_time = datetime.datetime.strptime('10Sep2018', '%d%b%Y')
+map_file = "node_ip_mac_mapping.txt"
+months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 def remove_parameters_from_msg (msg):
   re_retval = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', msg)
@@ -42,7 +44,15 @@ def get_timestamp_in_datetime (tstamp_str):
 
 def get_timestamp_in_string (msg):
   words = msg.split()
-  date_str = words[0] + " " + words[1] + " 2018 " + words[2]
+  year = 2018
+
+  if (words[0] not in months):
+    dstr = "Jun 05 2018 16:25:28"
+    return dstr
+  elif ((words[0] == "Feb") and (words[1] == "29")):
+    year = 2016
+
+  date_str = words[0] + " " + words[1] + " " + str(year) + " " + words[2]
   date_time_obj = datetime.datetime.strptime (date_str, '%b %d %Y %H:%M:%S')
   dstr = date_time_obj.strftime ('%b %d %Y %H:%M:%S')
   return dstr 
@@ -239,14 +249,13 @@ def collect_data_from_kibana (map_file):
   es  = Elasticsearch()
   i = 0
   with open (map_file) as file:
-    if (i > 20):
-      break
-
     for line in file:
+      if (i > 20):
+        break
       params = line.split ()
       collected_data = collect_data_per_node (es, params[0], params[1], params[2])
       begin_preprocess (collected_data, params[0])
-    i += 1
+      i += 1
 
 # Main function starts here
 collect_data_from_kibana (map_file)
