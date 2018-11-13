@@ -1,3 +1,4 @@
+import re
 import json
 import datetime
 import functools as ft
@@ -6,6 +7,27 @@ from pprint import pprint
 # Global definitions
 start_msg = "PXEKERNEL/PXEWAIT => PXEKERNEL/PXEWAKEUP"
 end_msg   = "NORMALv2/TBSETUP => NORMALv2/ISUP" 
+timegap   = 600 # In Seconds
+
+
+def remove_parameters_from_msg (msg):
+  re_retval = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', msg)
+  if (re_retval != None):
+    ip_add = re_retval.group()
+    msg = msg.replace (ip_add, "IP_ADDR")
+  
+  re_retval = re.search (r'\w{3}\s{1,4}\d{1,2}\s{1,4}\d{2}\:\d{2}\:\d{2}',msg)
+  if (re_retval != None):
+    date = re_retval.group()
+    msg = msg.replace (date, "DATE")
+ 
+  re_retval = re.search (r'hp\d{1,4}' ,msg)
+  if (re_retval != None):
+    machine_name = re_retval.group()
+    msg = msg.replace (machine_name, "MACHINE")
+
+  print (msg)
+  return msg
 
 def get_timestamp_in_datetime (tstamp_str):
   date_time_obj = datetime.datetime.strptime (tstamp_str, '%b %d %Y %H:%M:%S')
@@ -22,6 +44,11 @@ def extract_timestamp_from_msg (hits):
   length = len(hits)
   for i in range (0, length):
     hits[i]["_source"]["timestamp"] = get_timestamp_in_string (hits[i]["_source"]["message"])
+
+def remove_params_from_all_msg (hits):
+  length = len(hits)
+  for i in range (0, length):
+    hits[i]["_source"]["message"] = remove_parameters_from_msg (hits[i]["_source"]["message"])
 
 def log_compare (a, b):
   #Extract the timestamp values to datetime format from both
@@ -44,7 +71,52 @@ def dump_all_messages (hits):
   length = len(hits)
   for i in range (0, length):
     print (hits[i]["_source"]["message"])
-    
+
+def get_timediff_in_seconds (a, b):
+  c = b-a
+  return c.seconds
+
+# Gap is in order of seconds 
+def split_by_time_window (hits, gap):
+  length = len(hits)
+  
+  #Initialize the variables needed for loop
+  new_data = []
+  filename_counter = 1
+  log_lines_in_file = 0
+  prev_tstamp = None
+  
+  #Loop begins
+  for i in range (0, length):
+    curr_tstamp = get_timestamp_in_datetime (hits[i]["_source"]["timestamp"])
+
+    if ((prev_tstamp == None) or (get_timediff_in_seconds (prev_tstamp, curr_tstamp) < gap)):
+      #Keep adding entries 
+      new_data.append(hits[i])
+      log_lines_in_file += 1
+    else:
+      #New sequence begins here, so dump whatever we have got till now
+      filename = "test" + str(filename_counter) + ".json"
+      print (filename, "has", log_lines_in_file, "lines")
+      with open(filename, 'w') as tmp_file:
+        json.dump (new_data, tmp_file)
+     
+      filename_counter += 1
+      new_data = None
+      new_data = []
+      new_data.append(hits[i])
+      log_lines_in_file = 1
+
+    prev_tstamp = curr_tstamp
+
+  if (log_lines_in_file > 0):
+    # Dump the remaining data
+    filename = "test" + str(filename_counter) + ".json"
+    print (filename, "has", log_lines_in_file, "lines")
+    with open(filename, 'w') as tmp_file:
+      json.dump (new_data, tmp_file)
+    new_data = None
+
 def split_by_start_to_end (hits, start_msg, end_msg):
   length = len(hits)
 
@@ -95,58 +167,21 @@ def begin_preprocess (data):
   # Sort all the logs by timestamp
   data["hits"]["hits"] = sort_log_data_by_time (data["hits"]["hits"])
 
+	# Remove the non generic values from the messages
+  remove_params_from_all_msg (data["hits"]["hits"])
+
   #Debug dump
   #dump_all_messages (data["hits"]["hits"])
 
-  # Call file splitter function
-  split_by_start_to_end (data["hits"]["hits"], start_msg, end_msg)
+  # Call file splitter function - Splits by given start and end message
+  split_by_time_window (data["hits"]["hits"], timegap)
+
+  # Call file splitter function - Splits by given start and end message
+  #split_by_start_to_end (data["hits"]["hits"], start_msg, end_msg)
 
 # Main function starts here
 with open("output.json") as rfile:
   data = json.load(rfile)
 
 begin_preprocess (data)
-
-
-# Old but gold
-'''
-def begin_preprocess (data):
-
-  if data["hits"] == None:
-    return
-
-  if data["hits"]["hits"] == None:
-    return
-
-  length = len(data["hits"]["hits"])
-  print (length)
-
-  new_data = []
-  start = False
-  filename_counter = 1
-  log_lines_in_file = 0
-  for i in range (0, length):
-    if ("PXEKERNEL/PXEWAIT => PXEKERNEL/PXEWAKEUP" in data["hits"]["hits"][i]["_source"]["message"]):
-      #print (data["hits"]["hits"][i]["_source"]["message"])
-      print ("Data collection started")
-      start = True
-    elif ("NORMALv2/TBSETUP => NORMALv2/ISUP" in data["hits"]["hits"][i]["_source"]["message"]):
-      print ("Data collection ended", log_lines_in_file, "Lines in this iteration")
-      start = False
-
-      if (log_lines_in_file != 0):
-        #Write all the data here
-        filename = "test" + str(filename_counter) + ".json"
-        with open(filename, 'w') as tmp_file:
-          json.dump (new_data, tmp_file)
-
-        filename_counter += 1
-        new_data = None
-        new_data = []
-        log_lines_in_file = 0
-
-    if (start == True):
-        new_data.append(data["hits"]["hits"][i])
-        log_lines_in_file += 1
-'''
 
