@@ -8,6 +8,7 @@ from pprint import pprint
 start_msg = "PXEKERNEL/PXEWAIT => PXEKERNEL/PXEWAKEUP"
 end_msg   = "NORMALv2/TBSETUP => NORMALv2/ISUP" 
 timegap   = 600 # In Seconds
+base_time = datetime.datetime.strptime('10Sep2018', '%d%b%Y')
 
 def remove_parameters_from_msg (msg):
   re_retval = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', msg)
@@ -157,6 +158,18 @@ def split_by_start_to_end (hits, start_msg, end_msg):
      new_data.append(hits[i])
      log_lines_in_file += 1
 
+def eliminate_older_msgs (hits):
+  length = len (hits)
+
+  new_hits = []
+  for i in range (0, length):
+    curr_tstamp = get_timestamp_in_datetime (hits[i]["_source"]["timestamp"])
+    if (curr_tstamp < base_time):
+      continue
+    else:
+      new_hits.append (hits[i])
+
+  return new_hits
 
 # Preprocess master function
 def begin_preprocess (data):
@@ -167,18 +180,21 @@ def begin_preprocess (data):
 
   # Since timestamp isn't present in all json objects extract from the message
   extract_timestamp_from_msg (data["hits"]["hits"])
-  
+ 
+  # Eliminate messages before 10 Sept 2018
+  data["hits"]["hits"] = eliminate_older_msgs (data["hits"]["hits"])
+   
   # Sort all the logs by timestamp
   data["hits"]["hits"] = sort_log_data_by_time (data["hits"]["hits"])
 
 	# Remove the non generic values from the messages
-  remove_params_from_all_msg (data["hits"]["hits"])
+  #remove_params_from_all_msg (data["hits"]["hits"])
 
   #Debug dump
-  #dump_all_messages (data["hits"]["hits"])
+  dump_all_messages (data["hits"]["hits"])
 
   # Call file splitter function - Splits by given start and end message
-  split_by_time_window (data["hits"]["hits"], timegap)
+  #split_by_time_window (data["hits"]["hits"], timegap)
 
   # Call file splitter function - Splits by given start and end message
   #split_by_start_to_end (data["hits"]["hits"], start_msg, end_msg)
