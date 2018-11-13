@@ -39,7 +39,7 @@ def convert_json_to_libsvm (filename, log_filename):
 
 
 #Main execution
-no_of_files = 20
+no_of_files = 150
 
 #Total big file which will be the input to the ML classifier
 log = open ("logfile.train", "w")
@@ -48,5 +48,7 @@ for i in range (1, no_of_files):
   convert_json_to_libsvm ('test'+str(i)+'.json', 'logfile.train')
 
 log.close()
+for i,val in key_mapping.items():
+  print (val, i)
 
 

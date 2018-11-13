@@ -9,23 +9,27 @@ start_msg = "PXEKERNEL/PXEWAIT => PXEKERNEL/PXEWAKEUP"
 end_msg   = "NORMALv2/TBSETUP => NORMALv2/ISUP" 
 timegap   = 600 # In Seconds
 
-
 def remove_parameters_from_msg (msg):
   re_retval = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', msg)
   if (re_retval != None):
     ip_add = re_retval.group()
     msg = msg.replace (ip_add, "IP_ADDR")
   
-  re_retval = re.search (r'\w{3}\s{1,4}\d{1,2}\s{1,4}\d{2}\:\d{2}\:\d{2}',msg)
+  re_retval = re.findall (r'\w{3}\s{1,4}\d{1,2}\s{1,4}\d{2}\:\d{2}\:\d{2}',msg)
   if (re_retval != None):
-    date = re_retval.group()
-    msg = msg.replace (date, "DATE")
+    for date in re_retval:
+      msg = msg.replace (date, "DATE")
+  
+  re_retval = re.findall (r'hp\d{1,4}' ,msg)
+  if (re_retval != None):
+    for machine_name in re_retval:
+      msg = msg.replace (machine_name, "MACHINE")
  
-  re_retval = re.search (r'hp\d{1,4}' ,msg)
+  re_retval = re.findall (r'ms\d{1,5}' ,msg)
   if (re_retval != None):
-    machine_name = re_retval.group()
-    msg = msg.replace (machine_name, "MACHINE")
-
+    for machine_name in re_retval:
+      msg = msg.replace (machine_name, "MACHINE")
+ 
   print (msg)
   return msg
 
