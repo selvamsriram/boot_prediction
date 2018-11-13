@@ -2,6 +2,8 @@ import re
 import json
 import datetime
 import functools as ft
+import requests
+from elasticsearch import Elasticsearch
 from pprint import pprint
 
 # Global definitions
@@ -82,7 +84,7 @@ def get_timediff_in_seconds (a, b):
   return c.seconds
 
 # Gap is in order of seconds 
-def split_by_time_window (hits, gap):
+def split_by_time_window (hits, gap, node_id):
   length = len(hits)
   
   #Initialize the variables needed for loop
@@ -101,7 +103,7 @@ def split_by_time_window (hits, gap):
       log_lines_in_file += 1
     else:
       #New sequence begins here, so dump whatever we have got till now
-      filename = "test" + str(filename_counter) + ".json"
+      filename = "test_" + node_id + "_" +str(filename_counter) + ".json"
       print (filename, "has", log_lines_in_file, "lines")
       with open(filename, 'w') as tmp_file:
         json.dump (new_data, tmp_file)
@@ -116,13 +118,13 @@ def split_by_time_window (hits, gap):
 
   if (log_lines_in_file > 0):
     # Dump the remaining data
-    filename = "test" + str(filename_counter) + ".json"
+    filename = "test_" + node_id + "_" + str(filename_counter) + ".json"
     print (filename, "has", log_lines_in_file, "lines")
     with open(filename, 'w') as tmp_file:
       json.dump (new_data, tmp_file)
     new_data = None
 
-def split_by_start_to_end (hits, start_msg, end_msg):
+def split_by_start_to_end (hits, start_msg, end_msg, node_id):
   length = len(hits)
 
   #Initialize the variables needed for loop
@@ -145,7 +147,7 @@ def split_by_start_to_end (hits, start_msg, end_msg):
       if (log_lines_in_file != 0):
         new_data.append(hits[i])
         #Write all the data here
-        filename = "test" + str(filename_counter) + ".json"
+        filename = "test_" + node_id + "_" +str(filename_counter) + ".json"
         with open(filename, 'w') as tmp_file:
           json.dump (new_data, tmp_file)
 
@@ -170,6 +172,94 @@ def eliminate_older_msgs (hits):
       new_hits.append (hits[i])
 
   return new_hits
+
+# Preprocess master function
+def begin_preprocess (data, node_id):
+  if data == None:
+    return
+
+  # Since timestamp isn't present in all json objects extract from the message
+  extract_timestamp_from_msg (data)
+ 
+  # Eliminate messages before 10 Sept 2018
+  data = eliminate_older_msgs (data)
+   
+  # Sort all the logs by timestamp
+  data = sort_log_data_by_time (data)
+
+	# Remove the non generic values from the messages
+  #remove_params_from_all_msg (data)
+
+  #Debug dump
+  dump_all_messages (data)
+
+  # Call file splitter function - Splits by given start and end message
+  split_by_time_window (data, timegap, node_id)
+
+  # Call file splitter function - Splits by given start and end message
+  #split_by_start_to_end (data, start_msg, end_msg, node_id)
+
+# Collect data per node from Kibana
+def collect_data_per_node (es, node, ip_addr, mac_addr):
+  print ("Querying node ",node, "IP Addr ",ip_addr, "Mac Addr ",mac_addr)
+  query_str = "(source:reboot.log OR source:stated.log OR source:bootinfo.log) AND (node_id:"+node+"OR node_ids:"+node+" OR message:"+node+" OR message:"+ip_addr+") AND beat.hostname: boss.utah.cloudlab.us"
+  data = es.search(index="_all", scroll = '2m', body = {
+                                                       "query": {
+                                                         "query_string": {
+                                                           "query": query_str}}, "size": 10000,})
+  sid = data['_scroll_id']
+  scroll_size = (data['hits']['total'])
+
+  # Save retrieved information
+  dst_list = []
+  dst_list.extend(data['hits']['hits'])
+
+  print (scroll_size)
+  while scroll_size > 0:
+    print ("Scrolling...")
+    data = es.scroll(scroll_id=sid, scroll='2m')
+
+    # Process current batch of hits
+    #process_hits(data['hits']['hits'])
+
+    # Update the scroll ID
+    sid = data['_scroll_id']
+
+    # Get the number of results that returned in the last scroll
+    scroll_size = len(data['hits']['hits'])
+    print (scroll_size)
+    dst_list.extend(data['hits']['hits'])
+
+  print ("Total records collected for node", node, "is", len(dst_list))
+  return dst_list
+
+
+# Function to collect data from Kibana server
+def collect_data_from_kibana (map_file):
+  es  = Elasticsearch()
+  i = 0
+  with open (map_file) as file:
+    if (i > 20):
+      break
+
+    for line in file:
+      params = line.split ()
+      collected_data = collect_data_per_node (es, params[0], params[1], params[2])
+      begin_preprocess (collected_data, params[0])
+    i += 1
+
+# Main function starts here
+collect_data_from_kibana (map_file)
+
+#-----------------------------------------------------------------------------------------------
+# Old But Gold
+'''
+es  = Elasticsearch()
+collected_data = collect_data_per_node (es, "hp024", "128.110.154.105", "98f2b3cc12e0")
+begin_preprocess (collected_data, "hp024")
+
+with open("output.json") as rfile:
+  data = json.load(rfile)
 
 # Preprocess master function
 def begin_preprocess (data):
@@ -198,10 +288,4 @@ def begin_preprocess (data):
 
   # Call file splitter function - Splits by given start and end message
   #split_by_start_to_end (data["hits"]["hits"], start_msg, end_msg)
-
-# Main function starts here
-with open("output.json") as rfile:
-  data = json.load(rfile)
-
-begin_preprocess (data)
-
+'''
