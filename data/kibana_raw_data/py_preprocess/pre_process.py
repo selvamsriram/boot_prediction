@@ -283,15 +283,18 @@ def collect_data_from_kibana (map_file):
       if (i > 200):
         break
       params = line.split ()
+      if (not ((params[0] == "hp034") or (params[0] == "hp035") or (params[0] == "hp036") or (params[0] == "hp037") or (params[0] == "hp038"))):
+        continue
+
       collected_data = collect_data_per_node (es, params[0], params[1], params[2])
       begin_preprocess (collected_data, params[0])
       i += 1
 
 #------------------------------------------------------------------------------
 # Main function starts here
-# collect_data_from_kibana (map_file)
+collect_data_from_kibana (map_file)
 
-es  = Elasticsearch()
-collected_data = collect_data_per_node (es, "hp034", "128.110.154.115", "98f2b3cc8370")
-begin_preprocess (collected_data, "hp034")
+#es  = Elasticsearch()
+#collected_data = collect_data_per_node (es, "hp035", "128.110.154.115", "98f2b3cc8370")
+#begin_preprocess (collected_data, "hp035")
 
