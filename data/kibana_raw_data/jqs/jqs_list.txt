@@ -2,4 +2,5 @@
 # Prints only the messages from the kibana output
 
 jq '.hits.hits ' output.json | jq ".[] | ._source.message"
+jq '.' test_hp110_12.json | jq '.[] | "\(._source.timestamp) \(._source.message)"'
 

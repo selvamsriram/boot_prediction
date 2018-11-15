@@ -34,8 +34,6 @@ def convert_json_to_libsvm (filename, log_filename):
 
     prev_tstamp = curr_tstamp
 
-    print (str (time_diff))
-
     key = key_mapping[data[log_line]['_source']['message']]
     time_val = " " + str(1) + ":" + str(time_diff) 
 
@@ -54,7 +52,28 @@ def convert_json_to_libsvm (filename, log_filename):
   return True
 
 
+def create_sparse_file (sparse_filename, mapping_filename):
+  log = open (sparse_filename, "w")
+  with open (mapping_filename) as mfile:
+    for line in mfile:
+      print (line)
+      params = line.split ()
+      fname_iterator = 1
+      ret = True
+      while (ret != False):
+        json_filename = "test_" + params[0] + "_" + str(fname_iterator) + ".json"
+        print ("opening file", json_filename)
+        ret = convert_json_to_libsvm (json_filename, sparse_filename)
+        fname_iterator += 1
+  log.close ()
+  for i,val in key_mapping.items():
+    print (val, i)
+
+
 #Main execution
+create_sparse_file ("logfile.train", "node_ip_mac_mapping.txt")
+
+'''
 #Total big file which will be the input to the ML classifier
 log = open ("logfile.train", "w")
 
@@ -68,5 +87,6 @@ while (ret != False):
 log.close()
 for i,val in key_mapping.items():
   print (val, i)
+'''
 
 
