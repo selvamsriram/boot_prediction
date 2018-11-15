@@ -5,6 +5,7 @@ import datetime
 import pre_process as pre_p
 
 key_mapping = {}
+len_max = 0
 
 def convert_json_to_libsvm (filename, log_filename):
   ret = os.path.exists (filename)
@@ -17,10 +18,19 @@ def convert_json_to_libsvm (filename, log_filename):
     data = json.load(f)
 
   len_data = len(data)
+  global len_max
+
+  if (len_max < len_data):
+     len_max = len_data
   #For now hard-coded to +1
-  label = '+1'
+  #label = '+1'
   prev_s = ''
   prev_tstamp = None
+
+  if (data[0]['_source']['label'] == True):
+    label = '+1'
+  else:
+    label = '-1'
 
   for log_line in range (len_data):
     if (data[log_line]['_source']['message'] not in key_mapping):
@@ -72,6 +82,7 @@ def create_sparse_file (sparse_filename, mapping_filename):
 
 #Main execution
 create_sparse_file ("logfile.train", "node_ip_mac_mapping.txt")
+print (len_max)
 
 '''
 #Total big file which will be the input to the ML classifier
