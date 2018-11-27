@@ -9,11 +9,14 @@ from pprint import pprint
 # Global definitions
 start_msg = "PXEKERNEL/PXEWAIT => PXEKERNEL/PXEWAKEUP"
 end_msg   = "NORMALv2/TBSETUP => NORMALv2/ISUP" 
-timegap   = 600 # In Seconds
+timegap   = 620 # In Seconds
 base_time = datetime.datetime.strptime('10Sep2018', '%d%b%Y')
 map_file = "node_ip_mac_mapping.txt"
 months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-positive_pattern = ["PXEKERNEL/PXEBOOTING => PXEKERNEL/PXEWAIT", "NORMALv2/TBSETUP => NORMALv2/ISUP"]
+months_log_not_present  = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Dec"]
+positive_pattern = ["PXEKERNEL/PXEBOOTING => PXEKERNEL/PXEWAIT", "NORMALv2/TBSETUP => NORMALv2/ISUP", "PXEKERNEL/TBSETUP => PXEKERNEL/ISUP", "NORMALv2/BOOTING => NORMALv2/ISUP", "NORMALv2/BOOTING => NORMALv2/PXEWAIT", "NORMALv2/PXEWAIT => PXEKERNEL/PXEWAIT"]
+ignored_messages = "HEAD: MACHINE in"
+key_mapping = {}
 
 #------------------------------------------------------------------------------
 # Label is +ve if the last 5 lines contains any of the +ve pattern strings
@@ -70,6 +73,8 @@ def get_timestamp_in_string (msg):
     return dstr
   elif ((words[0] == "Feb") and (words[1] == "29")):
     year = 2016
+  elif (words[0] in months_log_not_present):
+    year = 2016
 
   date_str = words[0] + " " + words[1] + " " + str(year) + " " + words[2]
   date_time_obj = datetime.datetime.strptime (date_str, '%b %d %Y %H:%M:%S')
@@ -99,6 +104,16 @@ def log_compare (a, b):
     return 1
   else:
     return 0
+#------------------------------------------------------------------------------
+def is_valid_data_set (data):
+  length = len(data)
+
+  #if all the messages are from reboot.log then ignore the whole set
+  for i in range (0, length):
+    if "reboot.log" not in data[i]["_source"]["source"]:
+      return True
+
+  return False
 
 #------------------------------------------------------------------------------
 def sort_log_data_by_time (hits):
@@ -129,6 +144,9 @@ def split_by_time_window (hits, gap, node_id):
    
   #Loop begins
   for i in range (0, length):
+    if ignored_messages in hits[i]["_source"]["message"]:
+      continue
+
     curr_tstamp = get_timestamp_in_datetime (hits[i]["_source"]["timestamp"])
 
     if ((prev_tstamp == None) or (get_timediff_in_seconds (prev_tstamp, curr_tstamp) < gap)):
@@ -136,16 +154,17 @@ def split_by_time_window (hits, gap, node_id):
       new_data.append(hits[i])
       log_lines_in_file += 1
     else:
-      #New sequence begins here, so dump whatever we have got till now
-      filename = "test_" + node_id + "_" +str(filename_counter) + ".json"
-      #Decide the label
-      new_data[0]["_source"]["label"] = find_label (new_data) 
-      print (filename, "has", log_lines_in_file, "lines, label", new_data[0]["_source"]["label"])
+      if ((len(new_data) > 10) and (is_valid_data_set(new_data) == True)):
+        #New sequence begins here, so dump whatever we have got till now
+        filename = "test_" + node_id + "_" +str(filename_counter) + ".json"
+        #Decide the label
+        new_data[0]["_source"]["label"] = find_label (new_data) 
+        print (filename, "has", log_lines_in_file, "lines, label", new_data[0]["_source"]["label"])
        
-      with open(filename, 'w') as tmp_file:
-        json.dump (new_data, tmp_file)
+        with open(filename, 'w') as tmp_file:
+          json.dump (new_data, tmp_file)
      
-      filename_counter += 1
+        filename_counter += 1
       new_data = None
       new_data = []
       new_data.append(hits[i])
@@ -153,7 +172,7 @@ def split_by_time_window (hits, gap, node_id):
 
     prev_tstamp = curr_tstamp
 
-  if (log_lines_in_file > 0):
+  if ((log_lines_in_file > 10) and (is_valid_data_set(new_data) == True)):
     # Dump the remaining data
     filename = "test_" + node_id + "_" + str(filename_counter) + ".json"
     new_data[0]["_source"]["label"] = find_label (new_data) 
@@ -241,6 +260,33 @@ def begin_preprocess (data, node_id):
   #split_by_start_to_end (data, start_msg, end_msg, node_id)
 
 #------------------------------------------------------------------------------
+def is_no_timestamp (hit):
+  if "timestamp" not in hit["_source"]:
+    return True 
+  elif hit["_source"]["timestamp"] == None:
+    return True 
+  return False 
+
+def find_parse_failure (data):
+  length = len(data)
+  for i in range (0, length):
+    if (is_no_timestamp (data[i]) == True):
+      # No timestamp present in this message
+      msg = remove_parameters_from_msg (data[i]["_source"]["message"])
+#      if ("HEAD: MACHINE in" in msg):
+#        continue
+
+#      if ("MACHINE: Released from" in msg):
+#        continue
+    
+#      if ("SEND: query bootinfo" in msg):
+#        continue
+             
+      if msg not in key_mapping:
+        key_mapping [msg] = data[i]["_source"]["message"]
+  for i,val in key_mapping.items():
+    print (val)
+#------------------------------------------------------------------------------
 # Collect data per node from Kibana
 def collect_data_per_node (es, node, ip_addr, mac_addr):
   print ("Querying node ",node, "IP Addr ",ip_addr, "Mac Addr ",mac_addr)
@@ -269,7 +315,7 @@ def collect_data_per_node (es, node, ip_addr, mac_addr):
     scroll_size = len(data['hits']['hits'])
     dst_list.extend(data['hits']['hits'])
 
-  print ("Total records collected for node", node, "is", len(dst_list))
+  #print ("Total records collected for node", node, "is", len(dst_list))
   return dst_list
 
 
@@ -280,16 +326,21 @@ def collect_data_from_kibana (map_file):
   i = 0
   with open (map_file) as file:
     for line in file:
+#      if (i < 400):
+#        i += 1
+#        continue
       if (i > 200):
         break
       params = line.split ()
-      if (not ((params[0] == "hp034") or (params[0] == "hp035") or (params[0] == "hp036") or (params[0] == "hp037") or (params[0] == "hp038"))):
-        continue
-
+#      if (not ((params[0] == "hp034") or (params[0] == "hp035") or (params[0] == "hp036") or (params[0] == "hp037") or (params[0] == "hp038"))):
+#        continue
       collected_data = collect_data_per_node (es, params[0], params[1], params[2])
       begin_preprocess (collected_data, params[0])
+#      find_parse_failure (collected_data)
       i += 1
 
+  for i,val in key_mapping.items():
+    print (val)
 #------------------------------------------------------------------------------
 # Main function starts here
 collect_data_from_kibana (map_file)
@@ -297,4 +348,4 @@ collect_data_from_kibana (map_file)
 #es  = Elasticsearch()
 #collected_data = collect_data_per_node (es, "hp035", "128.110.154.115", "98f2b3cc8370")
 #begin_preprocess (collected_data, "hp035")
-
+#find_parse_failure (collected_data)
