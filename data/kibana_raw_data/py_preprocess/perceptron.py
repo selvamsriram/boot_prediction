@@ -11,7 +11,7 @@ def file_len (filename):
 
 def create_table (filename):
   num_rows = file_len (filename)
-  num_cols = 664
+  num_cols = 295
   i = 0
 
   table = np.zeros ((num_rows, num_cols))
@@ -76,18 +76,34 @@ def perceptron (train_table, W, bias, W_a, bias_a, rate, margin, avg, aggr,
   return W, bias, W_a, bias_a, count
 
 def test_perceptron (test_table, W, bias):
+  true_positive = 0
+  false_positive = 0
+  false_negative = 0
+  positive_examples = 0
+  negative_examples = 0
   splitted = np.split (test_table, [1], axis = 1)
-
   Y = splitted[0]
   X = splitted[1]
   error = 0
 
   for eg in range (X.shape[0]):
+    if (Y[eg] > 0):
+      positive_examples += 1
+    else:
+      negative_examples += 1
+
     if (((np.dot (W, X[eg]) + bias) * Y[eg]) < 0):
+      if (Y[eg] > 0):
+        false_negative += 1
+      else:
+        false_positive += 1
       error += 1
+    else:
+      if (Y[eg] > 0):
+        true_positive += 1
 
   accuracy = 1 - error/Y.shape[0]
-  return accuracy
+  return accuracy, true_positive, false_positive, false_negative, positive_examples, negative_examples
 
 def compute_best_hyper_params (weight_vec, bias, rate_list, margin_list, decay, avg, aggr):
   max_mean = 0
@@ -128,7 +144,7 @@ def compute_best_hyper_params (weight_vec, bias, rate_list, margin_list, decay, 
 def train_and_dev_test (train_file, dev_file, weight_vec, bias, rate, epochs,
                         margin, decay, avg, aggr, dev_set):
   train_table = create_table (train_file)
-  print ("Train table size :", train_table.shape)
+  #print ("Train table size :", train_table.shape)
   best_accuracy = 0
   total_updates = 0
   best_update = 0
@@ -148,15 +164,39 @@ def train_and_dev_test (train_file, dev_file, weight_vec, bias, rate, epochs,
     total_updates = total_updates + count
 
     dev_table = create_table (dev_file)
-    print ("Dev file size : ", dev_table.shape)
+    #print ("Dev file size : ", dev_table.shape)
     if (avg == 1):
-      accuracy = test_perceptron (dev_table, W_a, bias_a)
+      accuracy, true_positive, false_positive, false_negative, positive_examples, negative_examples = test_perceptron (dev_table, W_a, bias_a)
     else:
-      accuracy = test_perceptron (dev_table, weight_vec, bias)
+      accuracy, true_positive, false_positive, false_negative, positive_examples, negative_examples = test_perceptron (dev_table, weight_vec, bias)
+
+    if (true_positive != 0) or (false_positive != 0):
+      precision = (true_positive/(true_positive+false_positive))
+    else:
+      precision = 0
+
+    if (true_positive != 0) or (false_negative != 0):
+      recall = (true_positive/(true_positive+false_negative))
+    else:
+      recall = 0
+
+    if (precision != 0) or (recall != 0):
+    	F1 = 2 * ((precision * recall) / (precision + recall))
+    else:
+  	  F1 = 0
 
     if (dev_set == 1):
-      print ('Accuracy for dev set in epoch {} = {}%'.format (train_epoch, accuracy*100))
-      #print ('{}, {}'.format (train_epoch, accuracy*100))
+      print ("")
+      print ("Epoch                : ", train_epoch)
+      print ("Accuracy             : ", accuracy*100)
+      print ("Positive Examples    : ", positive_examples)
+      print ("Negative Examples    : ", negative_examples)
+      print ("True Positive        : ", true_positive)
+      print ("False Positive       : ", false_positive)
+      print ("False Negative       : ", false_negative)
+      print ("Precision            : ", precision)
+      print ("Recall               : ", recall)
+      print ("F Value              : ", F1)
 
     if (accuracy > best_accuracy):
       best_update = count
@@ -252,7 +292,7 @@ def compute_majority_baseline ():
 
 def invoke_all(seed):
   np.random.seed (seed) 
-  weight_vec = np.random.uniform (-0.01, 0.01, 663)
+  weight_vec = np.random.uniform (-0.01, 0.01, 294)
   bias = np.random.uniform (-0.01, 0.01)
   #rate_list = [1, 0.1, 0.01]
   rate_list = [0.01]
@@ -267,6 +307,7 @@ def invoke_all(seed):
   print ('-----------------------------------------------------') 
   accuracy = perceptron_master (weight_vec, bias, rate_list, margin_list, decay, avg, aggr)
   print ("-------------- Simple Perceptron End --------------\n" )
+'''
   # Decaying Percepton
   print ("************** Decay Perceptron Start **************") 
   print ('-----------------------------------------------------') 
@@ -274,8 +315,16 @@ def invoke_all(seed):
   accuracy += perceptron_master (weight_vec, bias, rate_list, margin_list, decay, avg, aggr)
   decay = 0
   print ("-------------- Decay Perceptron End --------------\n" )
-  
-'''
+ 
+   # Avg Perceptron
+  print ("************* Average Perceptron Start **************") 
+  print ('------------------------------------------------------') 
+  avg = 1
+  accuracy += perceptron_master (weight_vec, bias, rate_list, margin_list, decay, avg, aggr)
+  avg = 0
+  print ("-------------- Average Perceptron End --------------\n" )
+
+ 
   # Margin Perceptron
   print ("************** Margin Perceptron Start **************") 
   print ('-----------------------------------------------------') 
@@ -283,14 +332,6 @@ def invoke_all(seed):
   accuracy += perceptron_master (weight_vec, bias, rate_list, margin_list, decay, avg, aggr)
   margin_list = [0] 
   print ("-------------- Margin Perceptron End --------------\n" )
-
-  # Avg Perceptron
-  print ("************* Average Perceptron Start **************") 
-  print ('------------------------------------------------------') 
-  avg = 1
-  accuracy += perceptron_master (weight_vec, bias, rate_list, margin_list, decay, avg, aggr)
-  avg = 0
-  print ("-------------- Average Perceptron End --------------\n" )
 
   # Aggressive Perceptron
   print ("************* Aggressive Perceptron Start ***************") 
